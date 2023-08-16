@@ -202,10 +202,12 @@ def cleansing_suzu(df):
 
     # 一覧単位薬価とスズケン単位薬価の相違をなくす
     # 注射　メプチン吸入　モメタゾン点鼻　ネオキシテープ　　の単位薬価は　×をしない
-    df["単価調整_flag"] = df["suzu薬品名"].str.contains("注|吸入|ネオキシテープ")
+    df["単価調整_flag"] = df["suzu薬品名"].str.contains(
+        "注|吸入|ネオキシテープ|カリメート経口液|ラグノスNF経口ゼリー|点鼻液|エアゾール|ラクリミン点眼液|サンコバ点眼液|ジクアス点眼液|ヒアレイン点眼液|リーバクト配合顆粒")
     query_str = "単価調整_flag == 1"
     df_subset = df.query(query_str)
     df.loc[df_subset.index, "suzu単価"] = df["suzu単価"] * df["包装規格"]  # 単位薬価の調整
+
 
     # ツムラ漢方でｘが２つある場合　、単位薬価は　×２をする
     df["ツムラ調整単価"] = 1
@@ -999,7 +1001,7 @@ if push_button:
 
 
 st.subheader("卸データ作成")
-input_upload = st.file_uploader("作成するデータ", type={"csv"})
+input_upload = st.file_uploader("作成するデータ", type={"xlsx"})
 
 if not st.session_state.get("button2", False):
     push_button2 = st.button("作成スタート")
@@ -1008,8 +1010,8 @@ else:
 if push_button2:
     st.session_state.button2 = push_button2
 
-    df_input = pd.read_csv(
-        input_upload, index_col=0, usecols=[0, 1, 2, 3, 4, 5, 6, 7]
+    df_input = pd.read_excel(
+        input_upload, usecols=[1, 2, 3, 4, 5, 6, 7]
     )  # index_col=0でUnnamed: 0がなくなる
     # カラム名の変更
     df_input.columns = ["薬品名", "単位", "理論値", "誤差", "棚番", "薬価", "納入単価"]  # カラム名変更（念のため）
@@ -1081,6 +1083,13 @@ if push_button2:
         label="棚おろしリストCSV",
         data=df_input_select.to_csv(index=False).encode("utf-8-sig"),
         file_name="tana_list.csv",
+        mime="text/csv",
+    )
+
+    st.download_button(
+        label="棚合計の結果CSV",
+        data=df_tana_list_result.to_csv().encode("utf-8-sig"),
+        file_name="棚合計の結果.csv",
         mime="text/csv",
     )
 
