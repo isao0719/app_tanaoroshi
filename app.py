@@ -6,6 +6,35 @@ import streamlit as st
 import glob  # 重複チェックで使用
 
 
+def check_password():
+    """Returns `True` if the user had the correct password."""
+
+    def password_entered():
+        """Checks whether a password entered by the user is correct."""
+        if st.session_state["password"] == st.secrets["password"]:
+            st.session_state["password_correct"] = True
+            del st.session_state["password"]  # don't store password
+        else:
+            st.session_state["password_correct"] = False
+
+    if "password_correct" not in st.session_state:
+        # First run, show input for password.
+        st.text_input(
+            "Password", type="password", on_change=password_entered, key="password"
+        )
+        return False
+    elif not st.session_state["password_correct"]:
+        # Password not correct, show input + error.
+        st.text_input(
+            "Password", type="password", on_change=password_entered, key="password"
+        )
+        st.error("😕 Password incorrect")
+        return False
+    else:
+        # Password correct.
+        return True
+
+
 def cleansing_naka(df):
     df.columns = ["load薬品名", "load包装", "JANコード", "load納入価"]  # カラム名変更（念のため）
 
@@ -202,7 +231,22 @@ def cleansing_suzu(df):
 
     # 一覧単位薬価とスズケン単位薬価の相違をなくす
     # 注射　メプチン吸入　モメタゾン点鼻　ネオキシテープ　　の単位薬価は　×をしない
-    mihennkan = "注|吸入|ネオキシテープ|カリメート経口液|ラグノスNF経口ゼリー|点鼻液|エアゾール|ラクリミン点眼液|サンコバ点眼液|ジクアス点眼液|ヒアレイン点眼液|リーバクト配合顆粒|ピレノキシン懸濁性点眼液"
+    list_mihenkan = [
+        "注",
+        "吸入",
+        "ネオキシテープ",
+        "カリメート経口液",
+        "ラグノスNF経口ゼリー",
+        "点鼻液",
+        "エアゾール",
+        "ラクリミン点眼液",
+        "サンコバ点眼液",
+        "ジクアス点眼液",
+        "ヒアレイン点眼液",
+        "リーバクト配合顆粒",
+        "ピレノキシン懸濁性点眼液",
+    ]
+    mihennkan = "|".join(list_mihenkan)
     df["単価調整_flag"] = df["suzu薬品名"].str.contains(mihennkan)
     query_str = "単価調整_flag == 1"
     df_subset = df.query(query_str)
@@ -506,593 +550,640 @@ def change_oroshi_name(x):
     return x["卸_flag"]
 
 
-st.subheader("おろしアプリ")
-suzu_upload = st.file_uploader("スズケン", type={"xlsx"})
-naka_upload = st.file_uploader("中北薬品", type={"xlsx"})
-medi_upload = st.file_uploader("メディセオ", type={"xlsx"})
-ichiran_upload = st.file_uploader("在庫一覧", type={"xlsx"})
+if check_password():
+    st.subheader("おろしアプリ")
+    suzu_upload = st.file_uploader("スズケン", type={"xlsx"})
+    naka_upload = st.file_uploader("中北薬品", type={"xlsx"})
+    medi_upload = st.file_uploader("メディセオ", type={"xlsx"})
+    ichiran_upload = st.file_uploader("在庫一覧", type={"xlsx"})
 
-if not st.session_state.get("button", False):
-    push_button = st.button("代入スタート")
-else:
-    push_button = True
-if push_button:
-    st.session_state.button = push_button
-    df_suzu_clean = read_upload_file(
-        suzu_upload, cleansing_suzu, skipfooter=1, usecols=[0, 2, 3, 7]
-    )
-    df_medi_clean = read_upload_file(
-        medi_upload, cleansing_medi, skiprows=2, usecols=[0, 2, 3, 8]
-    )
+    if not st.session_state.get("button", False):
+        push_button = st.button("代入スタート")
+    else:
+        push_button = True
+    if push_button:
+        st.session_state.button = push_button
+        df_suzu_clean = read_upload_file(
+            suzu_upload, cleansing_suzu, skipfooter=1, usecols=[0, 2, 3, 7]
+        )
+        df_medi_clean = read_upload_file(
+            medi_upload, cleansing_medi, skiprows=2, usecols=[0, 2, 3, 8]
+        )
 
-    df_naka_clean = read_upload_file(naka_upload, cleansing_naka, usecols=[1, 2, 3, 5])
+        df_naka_clean = read_upload_file(
+            naka_upload, cleansing_naka, usecols=[1, 2, 3, 5]
+        )
 
-    df_ichiran_clean = read_upload_file(
-        ichiran_upload, cleansing_ichiran, usecols=[3, 6, 7, 8, 9, 11, 17]
-    )
+        df_ichiran_clean = read_upload_file(
+            ichiran_upload, cleansing_ichiran, usecols=[3, 6, 7, 8, 9, 11, 17]
+        )
 
-    # df_ichiran_cleanに単位納入価を付け終えた「決定単価」と「完了_flag」のカラムを作成
-    df_ichiran_clean["決定単価"] = 0
-    df_ichiran_clean["決定単価"] = df_ichiran_clean["決定単価"].astype("float64")
-    df_ichiran_clean["卸_flag"] = 0  # 採用卸がわかるよう「卸_flag」を追加
-    df_ichiran_clean["決定薬品名"] = "該当なし"
+        # df_ichiran_cleanに単位納入価を付け終えた「決定単価」と「完了_flag」のカラムを作成
+        df_ichiran_clean["決定単価"] = 0
+        df_ichiran_clean["決定単価"] = df_ichiran_clean["決定単価"].astype("float64")
+        df_ichiran_clean["卸_flag"] = 0  # 採用卸がわかるよう「卸_flag」を追加
+        df_ichiran_clean["決定薬品名"] = "該当なし"
 
-    # 中北の処理
-    # 中北のJANコード一致で単位納入価を付ける
-    # print(df_naka_clean["JANコード"].duplicated().sum())#念のため、JANコードの重複確認
-    df_naka_clean.drop_duplicates(
-        subset="JANコード", keep="first", inplace=True
-    )  # JANコード重複を消す
-    # 中北内のJANコード重複を消した後、外部結合でくっつける
-    df_ichiran_clean = df_ichiran_clean.rename(columns={"JANコード1": "JANコード"})
-    df_ichiran_clean = pd.merge(
-        df_ichiran_clean, df_naka_clean, how="left", on="JANコード"
-    )
+        # 中北の処理
+        # 中北のJANコード一致で単位納入価を付ける
+        # print(df_naka_clean["JANコード"].duplicated().sum())#念のため、JANコードの重複確認
+        df_naka_clean.drop_duplicates(
+            subset="JANコード", keep="first", inplace=True
+        )  # JANコード重複を消す
+        # 中北内のJANコード重複を消した後、外部結合でくっつける
+        df_ichiran_clean = df_ichiran_clean.rename(columns={"JANコード1": "JANコード"})
+        df_ichiran_clean = pd.merge(
+            df_ichiran_clean, df_naka_clean, how="left", on="JANコード"
+        )
 
-    # 単位納入価が付けらた医薬品の「完了_flag」をture　いらないカラムを削除
-    query_str = "naka単価 > 0"
-    df_subset = df_ichiran_clean.query(query_str)
-    df_ichiran_clean.loc[df_subset.index, "卸_flag"] = 1  # 卸中北で補えるflag
-    df_ichiran_clean.loc[df_subset.index, "決定薬品名"] = df_ichiran_clean.loc[
-        df_subset.index, "naka薬品名"
-    ]  # 薬品名代入
-    df_ichiran_clean.loc[df_subset.index, "決定単価"] = df_ichiran_clean.loc[
-        df_subset.index, "naka単価"
-    ]  # 決定単価を代入
-    # いらないカラムをおとす JANコードを戻す
-    df_ichiran_clean = df_ichiran_clean.iloc[:, [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11]]
-    df_ichiran_clean = df_ichiran_clean.rename(columns={"JANコード": "JANコード1"})
-
-    # JANコード2を外部結合でくっつける
-    df_ichiran_clean = df_ichiran_clean.rename(columns={"JANコード2": "JANコード"})
-    df_ichiran_clean = pd.merge(
-        df_ichiran_clean, df_naka_clean, how="left", on="JANコード"
-    )
-    # if文がつくれなかった・・
-    query_str = "naka単価 > 0"
-    query_sub = "卸_flag == 0"
-    df_sub = df_ichiran_clean.query(query_sub)
-    df_subset = df_sub.query(query_str)
-
-    df_ichiran_clean.loc[df_subset.index, "卸_flag"] = 1  # 卸中北で補えるflag
-    df_ichiran_clean.loc[df_subset.index, "決定薬品名"] = df_ichiran_clean.loc[
-        df_subset.index, "naka薬品名"
-    ]  # 薬品名代入
-    df_ichiran_clean.loc[df_subset.index, "決定単価"] = df_ichiran_clean.loc[
-        df_subset.index, "naka単価"
-    ]  # 決定単価を代入
-    # いらないカラムをおとす JANコードを戻す
-    df_ichiran_clean = df_ichiran_clean.iloc[:, [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11]]
-    df_ichiran_clean = df_ichiran_clean.rename(columns={"JANコード": "JANコード2"})
-
-    # JANコード3を外部結合でくっつける
-    df_ichiran_clean = df_ichiran_clean.rename(columns={"JANコード3": "JANコード"})
-    df_ichiran_clean = pd.merge(
-        df_ichiran_clean, df_naka_clean, how="left", on="JANコード"
-    )
-
-    # if文がつくれなかった・・
-    query_str = "naka単価 > 0"
-    query_sub = "卸_flag == 0"
-    df_sub = df_ichiran_clean.query(query_sub)
-    df_subset = df_sub.query(query_str)
-    df_ichiran_clean.loc[df_subset.index, "卸_flag"] = 1  # 卸中北で補えるflag
-    df_ichiran_clean.loc[df_subset.index, "決定薬品名"] = df_ichiran_clean.loc[
-        df_subset.index, "naka薬品名"
-    ]  # 薬品名代入
-    df_ichiran_clean.loc[df_subset.index, "決定単価"] = df_ichiran_clean.loc[
-        df_subset.index, "naka単価"
-    ]  # 決定単価を代入
-    # いらないカラムをおとす JANコードを戻す
-    df_ichiran_clean = df_ichiran_clean.iloc[:, [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11]]
-    df_ichiran_clean = df_ichiran_clean.rename(columns={"JANコード": "JANコード3"})
-
-    # メディセオの処理
-    # メディセオのJANコード一致で単位納入価を付ける
-    # print(df_read_medu["JANコード"].duplicated().sum())#念のため、JANコードの重複確認
-    df_medi_clean.drop_duplicates(
-        subset="JANコード", keep="first", inplace=True
-    )  # JANコード重複を消す
-
-    df_ichiran_clean = df_ichiran_clean.rename(columns={"JANコード1": "JANコード"})
-    df_ichiran_clean = pd.merge(
-        df_ichiran_clean, df_medi_clean, how="left", on="JANコード"
-    )
-
-    # 重複リスト『dupli_naka_medi_list1』を作成
-    # if文がつくれなかった・・
-    dupli_str = "medi単価 > 0"
-    dupli_sub = "卸_flag == 1"
-    df_dupli = df_ichiran_clean.query(dupli_sub)
-    dupli_naka_medi_list1 = df_dupli.query(dupli_str)
-    # いらないカラムをおとす
-    dupli_naka_medi_list1 = dupli_naka_medi_list1.iloc[:, [5, 9, 10, 11, 12, 14]]
-
-    # if文がつくれなかった・・
-    query_str = "medi単価 > 0"
-    query_sub = "卸_flag == 0"
-    df_sub = df_ichiran_clean.query(query_sub)
-    df_subset = df_sub.query(query_str)
-
-    df_ichiran_clean.loc[df_subset.index, "卸_flag"] = 2  # 卸メディセオで補えるflag
-    df_ichiran_clean.loc[df_subset.index, "決定薬品名"] = df_ichiran_clean.loc[
-        df_subset.index, "medi薬品名"
-    ]  # 薬品名代入
-    df_ichiran_clean.loc[df_subset.index, "決定単価"] = df_ichiran_clean.loc[
-        df_subset.index, "medi単価"
-    ]  # 決定単価を代入
-    # いらないカラムをおとす JANコードを戻す
-    df_ichiran_clean = df_ichiran_clean.iloc[:, [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11]]
-    df_ichiran_clean = df_ichiran_clean.rename(columns={"JANコード": "JANコード1"})
-
-    # メディセオのJANコード2の処理
-    df_ichiran_clean = df_ichiran_clean.rename(columns={"JANコード2": "JANコード"})
-    df_ichiran_clean = pd.merge(
-        df_ichiran_clean, df_medi_clean, how="left", on="JANコード"
-    )
-    # 重複リスト『dupli_naka_medi_list2』を作成
-    # if文がつくれなかった・・
-    dupli_str = "medi単価 > 0"
-    dupli_sub = "卸_flag == 1"
-    df_dupli = df_ichiran_clean.query(dupli_sub)
-    dupli_naka_medi_list2 = df_dupli.query(dupli_str)
-    dupli_naka_medi_list2 = dupli_naka_medi_list2.iloc[:, [5, 9, 10, 11, 12, 14]]
-    # if文がつくれなかった・・
-    query_str = "medi単価 > 0"
-    query_sub = "卸_flag == 0"
-    df_sub = df_ichiran_clean.query(query_sub)
-    df_subset = df_sub.query(query_str)
-
-    df_ichiran_clean.loc[df_subset.index, "卸_flag"] = 2  # 卸メディセオで補えるflag
-    df_ichiran_clean.loc[df_subset.index, "決定薬品名"] = df_ichiran_clean.loc[
-        df_subset.index, "medi薬品名"
-    ]  # 薬品名代入
-    df_ichiran_clean.loc[df_subset.index, "決定単価"] = df_ichiran_clean.loc[
-        df_subset.index, "medi単価"
-    ]  # 決定単価を代入
-    # いらないカラムをおとす JANコードを戻す
-    df_ichiran_clean = df_ichiran_clean.iloc[:, [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11]]
-    df_ichiran_clean = df_ichiran_clean.rename(columns={"JANコード": "JANコード2"})
-
-    # メディセオのJANコード3の処理
-    df_ichiran_clean = df_ichiran_clean.rename(columns={"JANコード3": "JANコード"})
-    df_ichiran_clean = pd.merge(
-        df_ichiran_clean, df_medi_clean, how="left", on="JANコード"
-    )
-    # 重複リスト『dupli_naka_medi_list3』を作成
-    # if文がつくれなかった・・
-    dupli_str = "medi単価 > 0"
-    dupli_sub = "卸_flag == 1"
-    df_dupli = df_ichiran_clean.query(dupli_sub)
-    dupli_naka_medi_list3 = df_dupli.query(dupli_str)
-    dupli_naka_medi_list3 = dupli_naka_medi_list3.iloc[:, [5, 9, 10, 11, 12, 14]]
-    # if文がつくれなかった・・
-    query_str = "medi単価 > 0"
-    query_sub = "卸_flag == 0"
-    df_sub = df_ichiran_clean.query(query_sub)
-    df_subset = df_sub.query(query_str)
-
-    df_ichiran_clean.loc[df_subset.index, "卸_flag"] = 2  # 卸メディセオで補えるflag
-    df_ichiran_clean.loc[df_subset.index, "決定薬品名"] = df_ichiran_clean.loc[
-        df_subset.index, "medi薬品名"
-    ]  # 薬品名代入
-    df_ichiran_clean.loc[df_subset.index, "決定単価"] = df_ichiran_clean.loc[
-        df_subset.index, "medi単価"
-    ]  # 決定単価を代入
-    # いらないカラムをおとす JANコードを戻す
-    df_ichiran_clean = df_ichiran_clean.iloc[:, [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11]]
-    df_ichiran_clean = df_ichiran_clean.rename(columns={"JANコード": "JANコード3"})
-
-    # 重複リストをくっつける
-    dupli_naka_medi_list = pd.concat(
-        [dupli_naka_medi_list1, dupli_naka_medi_list2, dupli_naka_medi_list3]
-    )
-    dupli_naka_medi_list.drop_duplicates(subset="棚番", inplace=True)
-
-    # スズケンの処理
-    # スズケンのJANコード一致で単位納入価を付ける
-    # print(df_read_medu["JANコード"].duplicated().sum())#念のため、JANコードの重複確認
-    df_suzu_clean.drop_duplicates(
-        subset="JANコード", keep="first", inplace=True
-    )  # JANコード重複を消す
-
-    # スズケンのJANコード1の処理
-    df_ichiran_clean = df_ichiran_clean.rename(columns={"JANコード1": "JANコード"})
-    df_ichiran_clean = pd.merge(
-        df_ichiran_clean, df_suzu_clean, how="left", on="JANコード"
-    )
-    # if文がつくれなかった・・
-    query_str = "suzu単価 > 0"
-    query_sub = "卸_flag == 0"
-    df_sub = df_ichiran_clean.query(query_sub)
-    df_subset = df_sub.query(query_str)
-
-    # 重複リスト『dupli_naka_suzu_list1』を作成
-    # if文がつくれなかった・・
-    dupli_str = "suzu単価 > 0"
-    dupli_sub = "卸_flag == 1"
-    df_dupli = df_ichiran_clean.query(dupli_sub)
-    dupli_naka_suzu_list1 = df_dupli.query(dupli_str)
-    # いらないカラムをおとす
-    dupli_naka_suzu_list1 = dupli_naka_suzu_list1.iloc[:, [5, 9, 10, 11, 12, 14]]
-
-    # 重複リスト『dupli_medi_suzu_list1』を作成
-    # if文がつくれなかった・・
-    dupli_str = "suzu単価 > 0"
-    dupli_sub = "卸_flag == 2"
-    df_dupli = df_ichiran_clean.query(dupli_sub)
-    dupli_medi_suzu_list1 = df_dupli.query(dupli_str)
-    # いらないカラムをおとす
-    dupli_medi_suzu_list1 = dupli_medi_suzu_list1.iloc[:, [5, 9, 10, 11, 12, 14]]
-
-    df_ichiran_clean.loc[df_subset.index, "卸_flag"] = 3  # 卸スズケンで補えるflag
-    df_ichiran_clean.loc[df_subset.index, "決定薬品名"] = df_ichiran_clean.loc[
-        df_subset.index, "suzu薬品名"
-    ]  # 薬品名代入
-    df_ichiran_clean.loc[df_subset.index, "決定単価"] = df_ichiran_clean.loc[
-        df_subset.index, "suzu単価"
-    ]  # 決定単価を代入
-    # いらないカラムをおとす JANコードを戻す
-    df_ichiran_clean = df_ichiran_clean.iloc[:, [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11]]
-    df_ichiran_clean = df_ichiran_clean.rename(columns={"JANコード": "JANコード1"})
-
-    # スズケンのJANコード2の処理
-    df_ichiran_clean = df_ichiran_clean.rename(columns={"JANコード2": "JANコード"})
-    df_ichiran_clean = pd.merge(
-        df_ichiran_clean, df_suzu_clean, how="left", on="JANコード"
-    )
-    # if文がつくれなかった・・
-    query_str = "suzu単価 > 0"
-    query_sub = "卸_flag == 0"
-    df_sub = df_ichiran_clean.query(query_sub)
-    df_subset = df_sub.query(query_str)
-
-    # 重複リスト『dupli_naka_suzu_list2』を作成
-    # if文がつくれなかった・・
-    dupli_str = "suzu単価 > 0"
-    dupli_sub = "卸_flag == 1"
-    df_dupli = df_ichiran_clean.query(dupli_sub)
-    dupli_naka_suzu_list2 = df_dupli.query(dupli_str)
-    # いらないカラムをおとす
-    dupli_naka_suzu_list2 = dupli_naka_suzu_list2.iloc[:, [5, 9, 10, 11, 12, 14]]
-
-    # 重複リスト『dupli_medi_suzu_list2』を作成
-    # if文がつくれなかった・・
-    dupli_str = "suzu単価 > 0"
-    dupli_sub = "卸_flag == 2"
-    df_dupli = df_ichiran_clean.query(dupli_sub)
-    dupli_medi_suzu_list2 = df_dupli.query(dupli_str)
-    # いらないカラムをおとす
-    dupli_medi_suzu_list2 = dupli_medi_suzu_list2.iloc[:, [5, 9, 10, 11, 12, 14]]
-
-    df_ichiran_clean.loc[df_subset.index, "卸_flag"] = 3  # 卸スズケンで補えるflag
-    df_ichiran_clean.loc[df_subset.index, "決定薬品名"] = df_ichiran_clean.loc[
-        df_subset.index, "suzu薬品名"
-    ]  # 薬品名代入
-    df_ichiran_clean.loc[df_subset.index, "決定単価"] = df_ichiran_clean.loc[
-        df_subset.index, "suzu単価"
-    ]  # 決定単価を代入
-    # いらないカラムをおとす JANコードを戻す
-    df_ichiran_clean = df_ichiran_clean.iloc[:, [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11]]
-    df_ichiran_clean = df_ichiran_clean.rename(columns={"JANコード": "JANコード2"})
-
-    # スズケンのJANコード3の処理
-    df_ichiran_clean = df_ichiran_clean.rename(columns={"JANコード3": "JANコード"})
-    df_ichiran_clean = pd.merge(
-        df_ichiran_clean, df_suzu_clean, how="left", on="JANコード"
-    )
-    # if文がつくれなかった・・
-    query_str = "suzu単価 > 0"
-    query_sub = "卸_flag == 0"
-    df_sub = df_ichiran_clean.query(query_sub)
-    df_subset = df_sub.query(query_str)
-
-    # 重複リスト『dupli_naka_suzu_list3』を作成
-    # if文がつくれなかった・・
-    dupli_str = "suzu単価 > 0"
-    dupli_sub = "卸_flag == 1"
-    df_dupli = df_ichiran_clean.query(dupli_sub)
-    dupli_naka_suzu_list3 = df_dupli.query(dupli_str)
-    # いらないカラムをおとす
-    dupli_naka_suzu_list3 = dupli_naka_suzu_list3.iloc[:, [5, 9, 10, 11, 12, 14]]
-
-    # 重複リスト『dupli_medi_suzu_list2』を作成
-    # if文がつくれなかった・・
-    dupli_str = "suzu単価 > 0"
-    dupli_sub = "卸_flag == 2"
-    df_dupli = df_ichiran_clean.query(dupli_sub)
-    dupli_medi_suzu_list3 = df_dupli.query(dupli_str)
-    # いらないカラムをおとす
-    dupli_medi_suzu_list3 = dupli_medi_suzu_list3.iloc[:, [5, 9, 10, 11, 12, 14]]
-
-    df_ichiran_clean.loc[df_subset.index, "卸_flag"] = 3  # 卸スズケンで補えるflag
-    df_ichiran_clean.loc[df_subset.index, "決定薬品名"] = df_ichiran_clean.loc[
-        df_subset.index, "suzu薬品名"
-    ]  # 薬品名代入
-    df_ichiran_clean.loc[df_subset.index, "決定単価"] = df_ichiran_clean.loc[
-        df_subset.index, "suzu単価"
-    ]  # 決定単価を代入
-    # いらないカラムをおとす JANコードを戻す
-    df_ichiran_clean = df_ichiran_clean.iloc[:, [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11]]
-    df_ichiran_clean = df_ichiran_clean.rename(columns={"JANコード": "JANコード3"})
-
-    # 重複リストをくっつける
-    dupli_naka_suzu_list = pd.concat(
-        [dupli_naka_suzu_list1, dupli_naka_suzu_list2, dupli_naka_suzu_list3]
-    )
-    dupli_naka_suzu_list.drop_duplicates(subset="棚番", inplace=True)
-
-    dupli_medi_suzu_list = pd.concat(
-        [dupli_medi_suzu_list1, dupli_medi_suzu_list2, dupli_medi_suzu_list3]
-    )
-    dupli_medi_suzu_list.drop_duplicates(subset="棚番", inplace=True)
-
-    # 101個がうまってない
-    # df_ichiran_clean.to_csv('tana_input.csv',
-    # columns=["check薬品名","棚番","在庫数","決定薬品名","決定単価","卸_flag","薬価","レセコン単価"], encoding=("utf-8-sig"))
-
-    # check_naka薬品名　で代入させる　スズケンは全店舗なので行わない
-    # 中北のcheck_naka薬品名の処理
-
-    df_ichiran_clean = df_ichiran_clean.rename(columns={"check薬品名": "check_naka薬品名"})
-    df_ichiran_clean = pd.merge(
-        df_ichiran_clean, df_naka_clean, how="left", on="check_naka薬品名"
-    )
-
-    # if文がつくれなかった・・
-    query_str = "naka単価 > 0"
-    query_sub = "卸_flag == 0"
-    df_sub = df_ichiran_clean.query(query_sub)
-    df_subset = df_sub.query(query_str)
-
-    df_ichiran_clean.loc[df_subset.index, "卸_flag"] = 1  # 卸中北で補えるflag
-    df_ichiran_clean.loc[df_subset.index, "決定薬品名"] = df_ichiran_clean.loc[
-        df_subset.index, "naka薬品名"
-    ]  # 薬品名代入
-    df_ichiran_clean.loc[df_subset.index, "決定単価"] = df_ichiran_clean.loc[
-        df_subset.index, "naka単価"
-    ]  # 決定単価を代入
-    # いらないカラムをおとす JANコードを戻す
-    df_ichiran_clean = df_ichiran_clean.iloc[:, [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11]]
-    df_ichiran_clean = df_ichiran_clean.rename(columns={"check_naka薬品名": "check薬品名"})
-
-    # メディセオのcheck_medi薬品名の処理
-    df_ichiran_clean = df_ichiran_clean.rename(columns={"check薬品名": "check_medi薬品名"})
-    df_ichiran_clean = pd.merge(
-        df_ichiran_clean, df_medi_clean, how="left", on="check_medi薬品名"
-    )
-    # 重複リスト『dupli_housou_medi_list』を作成 包装違いの重複
-    # if文がつくれなかった・・
-    dupli_str = "medi単価 > 0"
-    dupli_sub = "卸_flag == 1"
-    df_dupli = df_ichiran_clean.query(dupli_sub)
-    dupli_housou_medi_list = df_dupli.query(dupli_str)
-    dupli_housou_medi_list = dupli_housou_medi_list.iloc[:, [5, 9, 10, 11, 12, 14]]
-
-    # if文がつくれなかった・・
-    query_str = "medi単価 > 0"
-    query_sub = "卸_flag == 0"
-    df_sub = df_ichiran_clean.query(query_sub)
-    df_subset = df_sub.query(query_str)
-
-    df_ichiran_clean.loc[df_subset.index, "卸_flag"] = 2  # 卸中北で補えるflag
-    df_ichiran_clean.loc[df_subset.index, "決定薬品名"] = df_ichiran_clean.loc[
-        df_subset.index, "medi薬品名"
-    ]  # 薬品名代入
-    df_ichiran_clean.loc[df_subset.index, "決定単価"] = df_ichiran_clean.loc[
-        df_subset.index, "medi単価"
-    ]  # 決定単価を代入
-    # いらないカラムをおとす JANコードを戻す
-    df_ichiran_clean = df_ichiran_clean.iloc[:, [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11]]
-    df_ichiran_clean = df_ichiran_clean.rename(columns={"check_medi薬品名": "check薬品名"})
-
-    # check_nameで4個埋まる
-    # 決定単価の重複を消す
-    df_ichiran_clean.drop_duplicates(subset="check薬品名", keep="last", inplace=True)
-
-    #'tana_input.csv'に必要カラムを追加する
-    difference = df_ichiran_clean["薬価"] - df_ichiran_clean["決定単価"]
-    df_ichiran_clean["薬価差率"] = difference / df_ichiran_clean["薬価"] * 100
-    df_ichiran_clean["誤差"] = 0
-    df_ichiran_clean["誤差"] = df_ichiran_clean["誤差"].astype(float)
-
-    # 卸名に変換
-    df_ichiran_clean["卸_flag"] = df_ichiran_clean.apply(change_oroshi_name, axis=1)
-
-    # dupli_listの卸_flagは未変換の処理
-    dupli_naka_medi_list["卸_flag"] = dupli_naka_medi_list.apply(
-        change_oroshi_name, axis=1
-    )
-    dupli_naka_suzu_list["卸_flag"] = dupli_naka_suzu_list.apply(
-        change_oroshi_name, axis=1
-    )
-    dupli_medi_suzu_list["卸_flag"] = dupli_medi_suzu_list.apply(
-        change_oroshi_name, axis=1
-    )
-    dupli_housou_medi_list["卸_flag"] = dupli_housou_medi_list.apply(
-        change_oroshi_name, axis=1
-    )
-
-    df_ichiran_clean_select = df_ichiran_clean[
-        [
-            "check薬品名",
-            "単位",
-            "在庫数",
-            "誤差",
-            "棚番",
-            "薬価",
-            "決定単価",
-            "薬価差率",
-            "卸_flag",
-            "決定薬品名",
-            "レセコン単価",
+        # 単位納入価が付けらた医薬品の「完了_flag」をture　いらないカラムを削除
+        query_str = "naka単価 > 0"
+        df_subset = df_ichiran_clean.query(query_str)
+        df_ichiran_clean.loc[df_subset.index, "卸_flag"] = 1  # 卸中北で補えるflag
+        df_ichiran_clean.loc[df_subset.index, "決定薬品名"] = df_ichiran_clean.loc[
+            df_subset.index, "naka薬品名"
+        ]  # 薬品名代入
+        df_ichiran_clean.loc[df_subset.index, "決定単価"] = df_ichiran_clean.loc[
+            df_subset.index, "naka単価"
+        ]  # 決定単価を代入
+        # いらないカラムをおとす JANコードを戻す
+        df_ichiran_clean = df_ichiran_clean.iloc[
+            :, [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11]
         ]
-    ]
+        df_ichiran_clean = df_ichiran_clean.rename(columns={"JANコード": "JANコード1"})
 
-    # change1薬品名にはnanがあるので注意
-    st.download_button(
-        label="入力用CSV",
-        data=df_ichiran_clean_select.to_csv().encode("utf-8-sig"),
-        file_name="tana_input.csv",
-        mime="text/csv",
-    )
+        # JANコード2を外部結合でくっつける
+        df_ichiran_clean = df_ichiran_clean.rename(columns={"JANコード2": "JANコード"})
+        df_ichiran_clean = pd.merge(
+            df_ichiran_clean, df_naka_clean, how="left", on="JANコード"
+        )
+        # if文がつくれなかった・・
+        query_str = "naka単価 > 0"
+        query_sub = "卸_flag == 0"
+        df_sub = df_ichiran_clean.query(query_sub)
+        df_subset = df_sub.query(query_str)
 
-    # 重複確認をあとづけ
-    dupli_naka_medi_list_select = dupli_naka_medi_list[
-        ["棚番", "決定単価", "卸_flag", "決定薬品名", "medi薬品名", "medi単価"]
-    ]
-    st.download_button(
-        label="中北とメディセオの重複結果CSV",
-        data=dupli_naka_medi_list_select.to_csv().encode("utf-8-sig"),
-        file_name="中北とメディセオ重複の結果.csv",
-        mime="text/csv",
-    )
+        df_ichiran_clean.loc[df_subset.index, "卸_flag"] = 1  # 卸中北で補えるflag
+        df_ichiran_clean.loc[df_subset.index, "決定薬品名"] = df_ichiran_clean.loc[
+            df_subset.index, "naka薬品名"
+        ]  # 薬品名代入
+        df_ichiran_clean.loc[df_subset.index, "決定単価"] = df_ichiran_clean.loc[
+            df_subset.index, "naka単価"
+        ]  # 決定単価を代入
+        # いらないカラムをおとす JANコードを戻す
+        df_ichiran_clean = df_ichiran_clean.iloc[
+            :, [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11]
+        ]
+        df_ichiran_clean = df_ichiran_clean.rename(columns={"JANコード": "JANコード2"})
 
-    dupli_naka_suzu_list_select = dupli_naka_suzu_list[
-        ["棚番", "決定単価", "卸_flag", "決定薬品名", "suzu薬品名", "suzu単価"]
-    ]
-    st.download_button(
-        label="中北とスズケンの重複結果CSV",
-        data=dupli_naka_suzu_list_select.to_csv().encode("utf-8-sig"),
-        file_name="中北とスズケン重複の結果.csv",
-        mime="text/csv",
-    )
+        # JANコード3を外部結合でくっつける
+        df_ichiran_clean = df_ichiran_clean.rename(columns={"JANコード3": "JANコード"})
+        df_ichiran_clean = pd.merge(
+            df_ichiran_clean, df_naka_clean, how="left", on="JANコード"
+        )
 
-    dupli_medi_suzu_list_select = dupli_medi_suzu_list[
-        ["棚番", "決定単価", "卸_flag", "決定薬品名", "suzu薬品名", "suzu単価"]
-    ]
-    st.download_button(
-        label="メディセオとスズケンの重複結果CSV",
-        data=dupli_medi_suzu_list_select.to_csv().encode("utf-8-sig"),
-        file_name="メディセオとスズケン重複の結果.csv",
-        mime="text/csv",
-    )
+        # if文がつくれなかった・・
+        query_str = "naka単価 > 0"
+        query_sub = "卸_flag == 0"
+        df_sub = df_ichiran_clean.query(query_sub)
+        df_subset = df_sub.query(query_str)
+        df_ichiran_clean.loc[df_subset.index, "卸_flag"] = 1  # 卸中北で補えるflag
+        df_ichiran_clean.loc[df_subset.index, "決定薬品名"] = df_ichiran_clean.loc[
+            df_subset.index, "naka薬品名"
+        ]  # 薬品名代入
+        df_ichiran_clean.loc[df_subset.index, "決定単価"] = df_ichiran_clean.loc[
+            df_subset.index, "naka単価"
+        ]  # 決定単価を代入
+        # いらないカラムをおとす JANコードを戻す
+        df_ichiran_clean = df_ichiran_clean.iloc[
+            :, [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11]
+        ]
+        df_ichiran_clean = df_ichiran_clean.rename(columns={"JANコード": "JANコード3"})
 
-    dupli_housou_medi_list_select = dupli_housou_medi_list[
-        ["棚番", "決定単価", "卸_flag", "決定薬品名", "JANコード", "medi単価"]
-    ]
-    st.download_button(
-        label="中北とメディセオ包装が重複の結果CSV",
-        data=dupli_housou_medi_list_select.to_csv().encode("utf-8-sig"),
-        file_name="中北とメディセオ包装が重複の結果.csv",
-        mime="text/csv",
-    )
+        # メディセオの処理
+        # メディセオのJANコード一致で単位納入価を付ける
+        # print(df_read_medu["JANコード"].duplicated().sum())#念のため、JANコードの重複確認
+        df_medi_clean.drop_duplicates(
+            subset="JANコード", keep="first", inplace=True
+        )  # JANコード重複を消す
 
+        df_ichiran_clean = df_ichiran_clean.rename(columns={"JANコード1": "JANコード"})
+        df_ichiran_clean = pd.merge(
+            df_ichiran_clean, df_medi_clean, how="left", on="JANコード"
+        )
 
-st.subheader("卸データ作成")
-input_upload = st.file_uploader("作成するデータ", type={"xlsx"})
+        # 重複リスト『dupli_naka_medi_list1』を作成
+        # if文がつくれなかった・・
+        dupli_str = "medi単価 > 0"
+        dupli_sub = "卸_flag == 1"
+        df_dupli = df_ichiran_clean.query(dupli_sub)
+        dupli_naka_medi_list1 = df_dupli.query(dupli_str)
+        # いらないカラムをおとす
+        dupli_naka_medi_list1 = dupli_naka_medi_list1.iloc[:, [5, 9, 10, 11, 12, 14]]
 
-if not st.session_state.get("button2", False):
-    push_button2 = st.button("作成スタート")
-else:
-    push_button2 = True
-if push_button2:
-    st.session_state.button2 = push_button2
+        # if文がつくれなかった・・
+        query_str = "medi単価 > 0"
+        query_sub = "卸_flag == 0"
+        df_sub = df_ichiran_clean.query(query_sub)
+        df_subset = df_sub.query(query_str)
 
-    df_input = pd.read_excel(
-        input_upload, usecols=[1, 2, 3, 4, 5, 6, 7]
-    )  # index_col=0でUnnamed: 0がなくなる
-    # カラム名の変更
-    df_input.columns = ["薬品名", "単位", "理論値", "誤差", "棚番", "薬価", "納入単価"]  # カラム名変更（念のため）
+        df_ichiran_clean.loc[df_subset.index, "卸_flag"] = 2  # 卸メディセオで補えるflag
+        df_ichiran_clean.loc[df_subset.index, "決定薬品名"] = df_ichiran_clean.loc[
+            df_subset.index, "medi薬品名"
+        ]  # 薬品名代入
+        df_ichiran_clean.loc[df_subset.index, "決定単価"] = df_ichiran_clean.loc[
+            df_subset.index, "medi単価"
+        ]  # 決定単価を代入
+        # いらないカラムをおとす JANコードを戻す
+        df_ichiran_clean = df_ichiran_clean.iloc[
+            :, [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11]
+        ]
+        df_ichiran_clean = df_ichiran_clean.rename(columns={"JANコード": "JANコード1"})
 
-    # 棚番のNanを置き換える
-    df_input["棚番"] = df_input["棚番"].fillna("　")
-    # 棚番から頭文字1字を抽出
-    pattern = "^."
+        # メディセオのJANコード2の処理
+        df_ichiran_clean = df_ichiran_clean.rename(columns={"JANコード2": "JANコード"})
+        df_ichiran_clean = pd.merge(
+            df_ichiran_clean, df_medi_clean, how="left", on="JANコード"
+        )
+        # 重複リスト『dupli_naka_medi_list2』を作成
+        # if文がつくれなかった・・
+        dupli_str = "medi単価 > 0"
+        dupli_sub = "卸_flag == 1"
+        df_dupli = df_ichiran_clean.query(dupli_sub)
+        dupli_naka_medi_list2 = df_dupli.query(dupli_str)
+        dupli_naka_medi_list2 = dupli_naka_medi_list2.iloc[:, [5, 9, 10, 11, 12, 14]]
+        # if文がつくれなかった・・
+        query_str = "medi単価 > 0"
+        query_sub = "卸_flag == 0"
+        df_sub = df_ichiran_clean.query(query_sub)
+        df_subset = df_sub.query(query_str)
 
-    def change_initials(x):
-        res = re.match(pattern, x["棚番"])
-        x["棚"] = res.group()
+        df_ichiran_clean.loc[df_subset.index, "卸_flag"] = 2  # 卸メディセオで補えるflag
+        df_ichiran_clean.loc[df_subset.index, "決定薬品名"] = df_ichiran_clean.loc[
+            df_subset.index, "medi薬品名"
+        ]  # 薬品名代入
+        df_ichiran_clean.loc[df_subset.index, "決定単価"] = df_ichiran_clean.loc[
+            df_subset.index, "medi単価"
+        ]  # 決定単価を代入
+        # いらないカラムをおとす JANコードを戻す
+        df_ichiran_clean = df_ichiran_clean.iloc[
+            :, [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11]
+        ]
+        df_ichiran_clean = df_ichiran_clean.rename(columns={"JANコード": "JANコード2"})
 
-        return x["棚"]
+        # メディセオのJANコード3の処理
+        df_ichiran_clean = df_ichiran_clean.rename(columns={"JANコード3": "JANコード"})
+        df_ichiran_clean = pd.merge(
+            df_ichiran_clean, df_medi_clean, how="left", on="JANコード"
+        )
+        # 重複リスト『dupli_naka_medi_list3』を作成
+        # if文がつくれなかった・・
+        dupli_str = "medi単価 > 0"
+        dupli_sub = "卸_flag == 1"
+        df_dupli = df_ichiran_clean.query(dupli_sub)
+        dupli_naka_medi_list3 = df_dupli.query(dupli_str)
+        dupli_naka_medi_list3 = dupli_naka_medi_list3.iloc[:, [5, 9, 10, 11, 12, 14]]
+        # if文がつくれなかった・・
+        query_str = "medi単価 > 0"
+        query_sub = "卸_flag == 0"
+        df_sub = df_ichiran_clean.query(query_sub)
+        df_subset = df_sub.query(query_str)
 
-    df_input["棚"] = df_input.apply(change_initials, axis=1)
+        df_ichiran_clean.loc[df_subset.index, "卸_flag"] = 2  # 卸メディセオで補えるflag
+        df_ichiran_clean.loc[df_subset.index, "決定薬品名"] = df_ichiran_clean.loc[
+            df_subset.index, "medi薬品名"
+        ]  # 薬品名代入
+        df_ichiran_clean.loc[df_subset.index, "決定単価"] = df_ichiran_clean.loc[
+            df_subset.index, "medi単価"
+        ]  # 決定単価を代入
+        # いらないカラムをおとす JANコードを戻す
+        df_ichiran_clean = df_ichiran_clean.iloc[
+            :, [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11]
+        ]
+        df_ichiran_clean = df_ichiran_clean.rename(columns={"JANコード": "JANコード3"})
 
-    # 必要カラムの追加
-    df_input["在庫数"] = 0
-    df_input["在庫数"] = df_input["在庫数"].astype(float)
-    # 『在庫数』カラムの追加
-    df_input["在庫数"] = df_input["理論値"] + df_input["誤差"]
-    difference = df_input["薬価"] - df_input["納入単価"]
-    df_input["対薬価率"] = difference / df_input["薬価"] * 100
-    df_input["在庫金額"] = df_input["在庫数"] * df_input["納入単価"]
-    df_input["誤差金額"] = df_input["誤差"] * df_input["納入単価"]
-    df_input["誤差金額合計"] = df_input["誤差金額"].abs()
+        # 重複リストをくっつける
+        dupli_naka_medi_list = pd.concat(
+            [dupli_naka_medi_list1, dupli_naka_medi_list2, dupli_naka_medi_list3]
+        )
+        dupli_naka_medi_list.drop_duplicates(subset="棚番", inplace=True)
 
-    # ソート
-    df_input = df_input.sort_values(by=("棚番"), ascending=True)
+        # スズケンの処理
+        # スズケンのJANコード一致で単位納入価を付ける
+        # print(df_read_medu["JANコード"].duplicated().sum())#念のため、JANコードの重複確認
+        df_suzu_clean.drop_duplicates(
+            subset="JANコード", keep="first", inplace=True
+        )  # JANコード重複を消す
 
-    # df出力の処理
-    # 棚ごとの合計値　棚名称　数　在庫金額　誤差金額　誤差率
-    tana_len = df_input.groupby("棚").size()
+        # スズケンのJANコード1の処理
+        df_ichiran_clean = df_ichiran_clean.rename(columns={"JANコード1": "JANコード"})
+        df_ichiran_clean = pd.merge(
+            df_ichiran_clean, df_suzu_clean, how="left", on="JANコード"
+        )
+        # if文がつくれなかった・・
+        query_str = "suzu単価 > 0"
+        query_sub = "卸_flag == 0"
+        df_sub = df_ichiran_clean.query(query_sub)
+        df_subset = df_sub.query(query_str)
 
-    tana_total = df_input.groupby("棚", as_index=True).apply(lambda d: (d["在庫金額"]).sum())
-    tana_totalerror = df_input.groupby("棚", as_index=True).apply(
-        lambda d: (d["誤差金額"]).sum()
-    )
-    tana_totalerror_abs = df_input.groupby("棚", as_index=True).apply(
-        lambda d: (d["誤差金額合計"]).sum()
-    )
-    df_tana_list = pd.DataFrame(tana_len, columns=["医薬品数"])
-    df_tana_list_result = pd.concat(
-        [df_tana_list, tana_total, tana_totalerror, tana_totalerror_abs], axis=1
-    )
-    df_tana_list_result.columns = ["医薬品数", "在庫金額合計", "誤差金額合計", "絶対値合計"]  # カラム名変更（念のため）
-    df_tana_list_result["誤差率"] = (
-        df_tana_list_result["絶対値合計"] / df_tana_list_result["在庫金額合計"] * 100
-    )
+        # 重複リスト『dupli_naka_suzu_list1』を作成
+        # if文がつくれなかった・・
+        dupli_str = "suzu単価 > 0"
+        dupli_sub = "卸_flag == 1"
+        df_dupli = df_ichiran_clean.query(dupli_sub)
+        dupli_naka_suzu_list1 = df_dupli.query(dupli_str)
+        # いらないカラムをおとす
+        dupli_naka_suzu_list1 = dupli_naka_suzu_list1.iloc[:, [5, 9, 10, 11, 12, 14]]
 
-    df_input_select = df_input[
-        [
-            "棚",
-            "棚番",
+        # 重複リスト『dupli_medi_suzu_list1』を作成
+        # if文がつくれなかった・・
+        dupli_str = "suzu単価 > 0"
+        dupli_sub = "卸_flag == 2"
+        df_dupli = df_ichiran_clean.query(dupli_sub)
+        dupli_medi_suzu_list1 = df_dupli.query(dupli_str)
+        # いらないカラムをおとす
+        dupli_medi_suzu_list1 = dupli_medi_suzu_list1.iloc[:, [5, 9, 10, 11, 12, 14]]
+
+        df_ichiran_clean.loc[df_subset.index, "卸_flag"] = 3  # 卸スズケンで補えるflag
+        df_ichiran_clean.loc[df_subset.index, "決定薬品名"] = df_ichiran_clean.loc[
+            df_subset.index, "suzu薬品名"
+        ]  # 薬品名代入
+        df_ichiran_clean.loc[df_subset.index, "決定単価"] = df_ichiran_clean.loc[
+            df_subset.index, "suzu単価"
+        ]  # 決定単価を代入
+        # いらないカラムをおとす JANコードを戻す
+        df_ichiran_clean = df_ichiran_clean.iloc[
+            :, [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11]
+        ]
+        df_ichiran_clean = df_ichiran_clean.rename(columns={"JANコード": "JANコード1"})
+
+        # スズケンのJANコード2の処理
+        df_ichiran_clean = df_ichiran_clean.rename(columns={"JANコード2": "JANコード"})
+        df_ichiran_clean = pd.merge(
+            df_ichiran_clean, df_suzu_clean, how="left", on="JANコード"
+        )
+        # if文がつくれなかった・・
+        query_str = "suzu単価 > 0"
+        query_sub = "卸_flag == 0"
+        df_sub = df_ichiran_clean.query(query_sub)
+        df_subset = df_sub.query(query_str)
+
+        # 重複リスト『dupli_naka_suzu_list2』を作成
+        # if文がつくれなかった・・
+        dupli_str = "suzu単価 > 0"
+        dupli_sub = "卸_flag == 1"
+        df_dupli = df_ichiran_clean.query(dupli_sub)
+        dupli_naka_suzu_list2 = df_dupli.query(dupli_str)
+        # いらないカラムをおとす
+        dupli_naka_suzu_list2 = dupli_naka_suzu_list2.iloc[:, [5, 9, 10, 11, 12, 14]]
+
+        # 重複リスト『dupli_medi_suzu_list2』を作成
+        # if文がつくれなかった・・
+        dupli_str = "suzu単価 > 0"
+        dupli_sub = "卸_flag == 2"
+        df_dupli = df_ichiran_clean.query(dupli_sub)
+        dupli_medi_suzu_list2 = df_dupli.query(dupli_str)
+        # いらないカラムをおとす
+        dupli_medi_suzu_list2 = dupli_medi_suzu_list2.iloc[:, [5, 9, 10, 11, 12, 14]]
+
+        df_ichiran_clean.loc[df_subset.index, "卸_flag"] = 3  # 卸スズケンで補えるflag
+        df_ichiran_clean.loc[df_subset.index, "決定薬品名"] = df_ichiran_clean.loc[
+            df_subset.index, "suzu薬品名"
+        ]  # 薬品名代入
+        df_ichiran_clean.loc[df_subset.index, "決定単価"] = df_ichiran_clean.loc[
+            df_subset.index, "suzu単価"
+        ]  # 決定単価を代入
+        # いらないカラムをおとす JANコードを戻す
+        df_ichiran_clean = df_ichiran_clean.iloc[
+            :, [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11]
+        ]
+        df_ichiran_clean = df_ichiran_clean.rename(columns={"JANコード": "JANコード2"})
+
+        # スズケンのJANコード3の処理
+        df_ichiran_clean = df_ichiran_clean.rename(columns={"JANコード3": "JANコード"})
+        df_ichiran_clean = pd.merge(
+            df_ichiran_clean, df_suzu_clean, how="left", on="JANコード"
+        )
+        # if文がつくれなかった・・
+        query_str = "suzu単価 > 0"
+        query_sub = "卸_flag == 0"
+        df_sub = df_ichiran_clean.query(query_sub)
+        df_subset = df_sub.query(query_str)
+
+        # 重複リスト『dupli_naka_suzu_list3』を作成
+        # if文がつくれなかった・・
+        dupli_str = "suzu単価 > 0"
+        dupli_sub = "卸_flag == 1"
+        df_dupli = df_ichiran_clean.query(dupli_sub)
+        dupli_naka_suzu_list3 = df_dupli.query(dupli_str)
+        # いらないカラムをおとす
+        dupli_naka_suzu_list3 = dupli_naka_suzu_list3.iloc[:, [5, 9, 10, 11, 12, 14]]
+
+        # 重複リスト『dupli_medi_suzu_list2』を作成
+        # if文がつくれなかった・・
+        dupli_str = "suzu単価 > 0"
+        dupli_sub = "卸_flag == 2"
+        df_dupli = df_ichiran_clean.query(dupli_sub)
+        dupli_medi_suzu_list3 = df_dupli.query(dupli_str)
+        # いらないカラムをおとす
+        dupli_medi_suzu_list3 = dupli_medi_suzu_list3.iloc[:, [5, 9, 10, 11, 12, 14]]
+
+        df_ichiran_clean.loc[df_subset.index, "卸_flag"] = 3  # 卸スズケンで補えるflag
+        df_ichiran_clean.loc[df_subset.index, "決定薬品名"] = df_ichiran_clean.loc[
+            df_subset.index, "suzu薬品名"
+        ]  # 薬品名代入
+        df_ichiran_clean.loc[df_subset.index, "決定単価"] = df_ichiran_clean.loc[
+            df_subset.index, "suzu単価"
+        ]  # 決定単価を代入
+        # いらないカラムをおとす JANコードを戻す
+        df_ichiran_clean = df_ichiran_clean.iloc[
+            :, [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11]
+        ]
+        df_ichiran_clean = df_ichiran_clean.rename(columns={"JANコード": "JANコード3"})
+
+        # 重複リストをくっつける
+        dupli_naka_suzu_list = pd.concat(
+            [dupli_naka_suzu_list1, dupli_naka_suzu_list2, dupli_naka_suzu_list3]
+        )
+        dupli_naka_suzu_list.drop_duplicates(subset="棚番", inplace=True)
+
+        dupli_medi_suzu_list = pd.concat(
+            [dupli_medi_suzu_list1, dupli_medi_suzu_list2, dupli_medi_suzu_list3]
+        )
+        dupli_medi_suzu_list.drop_duplicates(subset="棚番", inplace=True)
+
+        # 101個がうまってない
+        # df_ichiran_clean.to_csv('tana_input.csv',
+        # columns=["check薬品名","棚番","在庫数","決定薬品名","決定単価","卸_flag","薬価","レセコン単価"], encoding=("utf-8-sig"))
+
+        # check_naka薬品名　で代入させる　スズケンは全店舗なので行わない
+        # 中北のcheck_naka薬品名の処理
+
+        df_ichiran_clean = df_ichiran_clean.rename(
+            columns={"check薬品名": "check_naka薬品名"}
+        )
+        df_ichiran_clean = pd.merge(
+            df_ichiran_clean, df_naka_clean, how="left", on="check_naka薬品名"
+        )
+
+        # if文がつくれなかった・・
+        query_str = "naka単価 > 0"
+        query_sub = "卸_flag == 0"
+        df_sub = df_ichiran_clean.query(query_sub)
+        df_subset = df_sub.query(query_str)
+
+        df_ichiran_clean.loc[df_subset.index, "卸_flag"] = 1  # 卸中北で補えるflag
+        df_ichiran_clean.loc[df_subset.index, "決定薬品名"] = df_ichiran_clean.loc[
+            df_subset.index, "naka薬品名"
+        ]  # 薬品名代入
+        df_ichiran_clean.loc[df_subset.index, "決定単価"] = df_ichiran_clean.loc[
+            df_subset.index, "naka単価"
+        ]  # 決定単価を代入
+        # いらないカラムをおとす JANコードを戻す
+        df_ichiran_clean = df_ichiran_clean.iloc[
+            :, [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11]
+        ]
+        df_ichiran_clean = df_ichiran_clean.rename(
+            columns={"check_naka薬品名": "check薬品名"}
+        )
+
+        # メディセオのcheck_medi薬品名の処理
+        df_ichiran_clean = df_ichiran_clean.rename(
+            columns={"check薬品名": "check_medi薬品名"}
+        )
+        df_ichiran_clean = pd.merge(
+            df_ichiran_clean, df_medi_clean, how="left", on="check_medi薬品名"
+        )
+        # 重複リスト『dupli_housou_medi_list』を作成 包装違いの重複
+        # if文がつくれなかった・・
+        dupli_str = "medi単価 > 0"
+        dupli_sub = "卸_flag == 1"
+        df_dupli = df_ichiran_clean.query(dupli_sub)
+        dupli_housou_medi_list = df_dupli.query(dupli_str)
+        dupli_housou_medi_list = dupli_housou_medi_list.iloc[:, [5, 9, 10, 11, 12, 14]]
+
+        # if文がつくれなかった・・
+        query_str = "medi単価 > 0"
+        query_sub = "卸_flag == 0"
+        df_sub = df_ichiran_clean.query(query_sub)
+        df_subset = df_sub.query(query_str)
+
+        df_ichiran_clean.loc[df_subset.index, "卸_flag"] = 2  # 卸中北で補えるflag
+        df_ichiran_clean.loc[df_subset.index, "決定薬品名"] = df_ichiran_clean.loc[
+            df_subset.index, "medi薬品名"
+        ]  # 薬品名代入
+        df_ichiran_clean.loc[df_subset.index, "決定単価"] = df_ichiran_clean.loc[
+            df_subset.index, "medi単価"
+        ]  # 決定単価を代入
+        # いらないカラムをおとす JANコードを戻す
+        df_ichiran_clean = df_ichiran_clean.iloc[
+            :, [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11]
+        ]
+        df_ichiran_clean = df_ichiran_clean.rename(
+            columns={"check_medi薬品名": "check薬品名"}
+        )
+
+        # check_nameで4個埋まる
+        # 決定単価の重複を消す
+        df_ichiran_clean.drop_duplicates(subset="check薬品名", keep="last", inplace=True)
+
+        #'tana_input.csv'に必要カラムを追加する
+        difference = df_ichiran_clean["薬価"] - df_ichiran_clean["決定単価"]
+        df_ichiran_clean["薬価差率"] = difference / df_ichiran_clean["薬価"] * 100
+        df_ichiran_clean["誤差"] = 0
+        df_ichiran_clean["誤差"] = df_ichiran_clean["誤差"].astype(float)
+
+        # 卸名に変換
+        df_ichiran_clean["卸_flag"] = df_ichiran_clean.apply(change_oroshi_name, axis=1)
+
+        # dupli_listの卸_flagは未変換の処理
+        dupli_naka_medi_list["卸_flag"] = dupli_naka_medi_list.apply(
+            change_oroshi_name, axis=1
+        )
+        dupli_naka_suzu_list["卸_flag"] = dupli_naka_suzu_list.apply(
+            change_oroshi_name, axis=1
+        )
+        dupli_medi_suzu_list["卸_flag"] = dupli_medi_suzu_list.apply(
+            change_oroshi_name, axis=1
+        )
+        dupli_housou_medi_list["卸_flag"] = dupli_housou_medi_list.apply(
+            change_oroshi_name, axis=1
+        )
+
+        df_ichiran_clean_select = df_ichiran_clean[
+            [
+                "check薬品名",
+                "単位",
+                "在庫数",
+                "誤差",
+                "棚番",
+                "薬価",
+                "決定単価",
+                "薬価差率",
+                "卸_flag",
+                "決定薬品名",
+                "レセコン単価",
+            ]
+        ]
+
+        # change1薬品名にはnanがあるので注意
+        st.download_button(
+            label="入力用CSV",
+            data=df_ichiran_clean_select.to_csv().encode("utf-8-sig"),
+            file_name="tana_input.csv",
+            mime="text/csv",
+        )
+
+        # 重複確認をあとづけ
+        dupli_naka_medi_list_select = dupli_naka_medi_list[
+            ["棚番", "決定単価", "卸_flag", "決定薬品名", "medi薬品名", "medi単価"]
+        ]
+        st.download_button(
+            label="中北とメディセオの重複結果CSV",
+            data=dupli_naka_medi_list_select.to_csv().encode("utf-8-sig"),
+            file_name="中北とメディセオ重複の結果.csv",
+            mime="text/csv",
+        )
+
+        dupli_naka_suzu_list_select = dupli_naka_suzu_list[
+            ["棚番", "決定単価", "卸_flag", "決定薬品名", "suzu薬品名", "suzu単価"]
+        ]
+        st.download_button(
+            label="中北とスズケンの重複結果CSV",
+            data=dupli_naka_suzu_list_select.to_csv().encode("utf-8-sig"),
+            file_name="中北とスズケン重複の結果.csv",
+            mime="text/csv",
+        )
+
+        dupli_medi_suzu_list_select = dupli_medi_suzu_list[
+            ["棚番", "決定単価", "卸_flag", "決定薬品名", "suzu薬品名", "suzu単価"]
+        ]
+        st.download_button(
+            label="メディセオとスズケンの重複結果CSV",
+            data=dupli_medi_suzu_list_select.to_csv().encode("utf-8-sig"),
+            file_name="メディセオとスズケン重複の結果.csv",
+            mime="text/csv",
+        )
+
+        dupli_housou_medi_list_select = dupli_housou_medi_list[
+            ["棚番", "決定単価", "卸_flag", "決定薬品名", "JANコード", "medi単価"]
+        ]
+        st.download_button(
+            label="中北とメディセオ包装が重複の結果CSV",
+            data=dupli_housou_medi_list_select.to_csv().encode("utf-8-sig"),
+            file_name="中北とメディセオ包装が重複の結果.csv",
+            mime="text/csv",
+        )
+
+    st.subheader("卸データ作成")
+    input_upload = st.file_uploader("作成するデータ", type={"xlsx"})
+
+    if not st.session_state.get("button2", False):
+        push_button2 = st.button("作成スタート")
+    else:
+        push_button2 = True
+    if push_button2:
+        st.session_state.button2 = push_button2
+
+        df_input = pd.read_excel(
+            input_upload, usecols=[1, 2, 3, 4, 5, 6, 7]
+        )  # index_col=0でUnnamed: 0がなくなる
+        # カラム名の変更
+        df_input.columns = [
             "薬品名",
             "単位",
             "理論値",
-            "在庫数",
             "誤差",
-            "納入単価",
+            "棚番",
             "薬価",
-            "対薬価率",
-            "在庫金額",
-            "誤差金額",
+            "納入単価",
+        ]  # カラム名変更（念のため）
+
+        # 棚番のNanを置き換える
+        df_input["棚番"] = df_input["棚番"].fillna("　")
+        # 棚番から頭文字1字を抽出
+        pattern = "^."
+
+        def change_initials(x):
+            res = re.match(pattern, x["棚番"])
+            x["棚"] = res.group()
+
+            return x["棚"]
+
+        df_input["棚"] = df_input.apply(change_initials, axis=1)
+
+        # 必要カラムの追加
+        df_input["在庫数"] = 0
+        df_input["在庫数"] = df_input["在庫数"].astype(float)
+        # 『在庫数』カラムの追加
+        df_input["在庫数"] = df_input["理論値"] + df_input["誤差"]
+        difference = df_input["薬価"] - df_input["納入単価"]
+        df_input["対薬価率"] = difference / df_input["薬価"] * 100
+        df_input["在庫金額"] = df_input["在庫数"] * df_input["納入単価"]
+        df_input["誤差金額"] = df_input["誤差"] * df_input["納入単価"]
+        df_input["誤差金額合計"] = df_input["誤差金額"].abs()
+
+        # ソート
+        df_input = df_input.sort_values(by=("棚番"), ascending=True)
+
+        # df出力の処理
+        # 棚ごとの合計値　棚名称　数　在庫金額　誤差金額　誤差率
+        tana_len = df_input.groupby("棚").size()
+
+        tana_total = df_input.groupby("棚", as_index=True).apply(
+            lambda d: (d["在庫金額"]).sum()
+        )
+        tana_totalerror = df_input.groupby("棚", as_index=True).apply(
+            lambda d: (d["誤差金額"]).sum()
+        )
+        tana_totalerror_abs = df_input.groupby("棚", as_index=True).apply(
+            lambda d: (d["誤差金額合計"]).sum()
+        )
+        df_tana_list = pd.DataFrame(tana_len, columns=["医薬品数"])
+        df_tana_list_result = pd.concat(
+            [df_tana_list, tana_total, tana_totalerror, tana_totalerror_abs], axis=1
+        )
+        df_tana_list_result.columns = [
+            "医薬品数",
+            "在庫金額合計",
+            "誤差金額合計",
+            "絶対値合計",
+        ]  # カラム名変更（念のため）
+        df_tana_list_result["誤差率"] = (
+            df_tana_list_result["絶対値合計"] / df_tana_list_result["在庫金額合計"] * 100
+        )
+
+        df_input_select = df_input[
+            [
+                "棚",
+                "棚番",
+                "薬品名",
+                "単位",
+                "理論値",
+                "在庫数",
+                "誤差",
+                "納入単価",
+                "薬価",
+                "対薬価率",
+                "在庫金額",
+                "誤差金額",
+            ]
         ]
-    ]
-    st.download_button(
-        label="棚おろしリストCSV",
-        data=df_input_select.to_csv(index=False).encode("utf-8-sig"),
-        file_name="tana_list.csv",
-        mime="text/csv",
-    )
+        st.download_button(
+            label="棚おろしリストCSV",
+            data=df_input_select.to_csv(index=False).encode("utf-8-sig"),
+            file_name="tana_list.csv",
+            mime="text/csv",
+        )
 
-    st.download_button(
-        label="棚合計の結果CSV",
-        data=df_tana_list_result.to_csv().encode("utf-8-sig"),
-        file_name="棚合計の結果.csv",
-        mime="text/csv",
-    )
+        st.download_button(
+            label="棚合計の結果CSV",
+            data=df_tana_list_result.to_csv().encode("utf-8-sig"),
+            file_name="棚合計の結果.csv",
+            mime="text/csv",
+        )
 
-    # change1薬品名にはnanがあるので注意
+        # change1薬品名にはnanがあるので注意
 
-    st.subheader("合計の結果")
-    st.dataframe(df_tana_list_result)
+        st.subheader("合計の結果")
+        st.dataframe(df_tana_list_result)
