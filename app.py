@@ -513,7 +513,9 @@ def cleansing_ichiran(df):
     return df
 
 
-def read_upload_file(file, func, skipfooter=0, skiprows=None, usecols=None):
+def read_upload_file(
+    file, func, orosigyousha, skipfooter=0, skiprows=None, usecols=None
+):
     if file:
         df = pd.read_excel(
             file, skipfooter=skipfooter, skiprows=skiprows, usecols=usecols
@@ -522,7 +524,22 @@ def read_upload_file(file, func, skipfooter=0, skiprows=None, usecols=None):
             "", float("nan")
         )  # .drop_duplicates()  # 空文字をnanにするreplace("", float("nan"))#drop_duplicates()重複文字を消さないで行う
     else:
-        df_clean = pd.DataFrame()
+        if orosigyousha == "suzu":
+            df = pd.DataFrame(
+                {
+                    "JANコード": [999999999999],
+                    "load薬品名": ["zzzzzzz"],
+                    "load包装": ["yyyy11"],
+                    "load納入価": [9999999],
+                }
+            )
+            df_clean = func(df).replace(
+                "", float("nan")
+            )  # .drop_duplicates()  # 空文字をnanにするreplace("", float("nan"))#drop_duplicates()重複文字を消さないで行う
+
+        else:
+            df_clean = pd.DataFrame()
+
     return df_clean
 
 
@@ -564,18 +581,21 @@ if check_password():
     if push_button:
         st.session_state.button = push_button
         df_suzu_clean = read_upload_file(
-            suzu_upload, cleansing_suzu, skipfooter=1, usecols=[0, 2, 3, 7]
+            suzu_upload, cleansing_suzu, "suzu", skipfooter=1, usecols=[0, 2, 3, 7]
         )
         df_medi_clean = read_upload_file(
-            medi_upload, cleansing_medi, skiprows=2, usecols=[0, 2, 3, 8]
+            medi_upload, cleansing_medi, "medi", skiprows=2, usecols=[0, 2, 3, 8]
         )
 
         df_naka_clean = read_upload_file(
-            naka_upload, cleansing_naka, usecols=[1, 2, 3, 5]
+            naka_upload, cleansing_naka, "naka", usecols=[1, 2, 3, 5]
         )
 
         df_ichiran_clean = read_upload_file(
-            ichiran_upload, cleansing_ichiran, usecols=[3, 6, 7, 8, 9, 11, 17]
+            ichiran_upload,
+            cleansing_ichiran,
+            "ichiran",
+            usecols=[3, 6, 7, 8, 9, 11, 17],
         )
 
         # df_ichiran_cleanに単位納入価を付け終えた「決定単価」と「完了_flag」のカラムを作成
